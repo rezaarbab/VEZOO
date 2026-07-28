@@ -23,17 +23,16 @@ if PROXY:
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 PROXIES = {"http": PROXY, "https": PROXY} if PROXY else {}
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Referer": "https://kisskh.nl/",
+}
 
 
 def search_kisskh(query: str):
-    """جستجو در KissKH"""
     url = f"https://kisskh.nl/api/DramaList/Search?q={query}&type=0"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Referer": "https://kisskh.nl/",
-    }
     try:
-        r = requests.get(url, headers=headers, proxies=PROXIES, timeout=15)
+        r = requests.get(url, headers=HEADERS, proxies=PROXIES, timeout=15)
         r.raise_for_status()
         return r.json()
     except Exception as e:
@@ -41,12 +40,37 @@ def search_kisskh(query: str):
         return []
 
 
+def get_drama_detail(drama_id: str):
+    """گرفتن اطلاعات کامل سریال شامل قسمت‌ها"""
+    url = f"https://kisskh.nl/api/DramaList/Drama/{drama_id}?isq=true"
+    try:
+        r = requests.get(url, headers=HEADERS, proxies=PROXIES, timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.error(f"Drama detail error: {e}")
+        return None
+
+
+def get_sub_list(ep_id: str, sub_key: str = ""):
+    """گرفتن لیست زیرنویس‌های یه قسمت"""
+    sub_key = sub_key or os.environ.get("KISSKH_SUB_KEY", "")
+    url = f"https://kisskh.nl/api/Sub/{ep_id}?kkey={sub_key}"
+    try:
+        r = requests.get(url, headers=HEADERS, proxies=PROXIES, timeout=15)
+        r.raise_for_status()
+        return r.json()
+    except Exception as e:
+        logger.error(f"Sub list error: {e}")
+        return []
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "سلام! 👋\n\n"
-        "دستورات:\n"
-        "/search payback — جستجوی سریال\n"
-        "لینک مستقیم KissKH + شماره قسمت:\n"
+        "برای جستجو:\n"
+        "`/search Payback`\n\n"
+        "یا لینک مستقیم:\n"
         "`https://kisskh.do/Drama/Payback--UNCUT-/?id=12822 9 sub`\n\n"
         "mode ها: `sub` `video` `all`",
         parse_mode="Markdown"
@@ -54,108 +78,139 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def search_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """جستجوی سریال"""
     if not context.args:
         await update.message.reply_text("بنویس: /search اسم سریال")
         return
     
     query = " ".join(context.args)
-    await update.message.reply_text(f"🔍 در حال جستجو برای: `{query}`...", parse_mode="Markdown")
+    msg = await update.message.reply_text(f"🔍 جستجو برای: `{query}`...", parse_mode="Markdown")
     
     results = search_kisskh(query)
     
     if not results:
-        await update.message.reply_text("❌ نتیجه‌ای پیدا نشد! لینک مستقیم بفرست.")
+        await msg.edit_text("❌ نتیجه‌ای پیدا نشد!")
         return
     
-    # نمایش نتایج با دکمه
     keyboard = []
     for item in results[:8]:
         title = item.get("title", "Unknown")
         drama_id = item.get("id", "")
-        btn_text = f"{title}"
-        callback = f"select_{drama_id}"
-        keyboard.append([InlineKeyboardButton(btn_text, callback_data=callback)])
+        ep_count = item.get("episodesCount", "?")
+        sub = item.get("sub", "")
+        sub_icon = "🇬🇧" if sub else ""
+        keyboard.append([InlineKeyboardButton(f"{title} ({ep_count} قسمت) {sub_icon}", callback_data=f"select_{drama_id}")])
     
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("نتایج:", reply_markup=reply_markup)
+    await msg.edit_text("نتایج جستجو:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """هندل کردن دکمه‌ها"""
     query = update.callback_query
     await query.answer()
-    
     data = query.data
-    
+
     if data.startswith("select_"):
         drama_id = data.replace("select_", "")
-        # نمایش دکمه‌های انتخاب قسمت و mode
-        keyboard = [
-            [
-                InlineKeyboardButton("زیرنویس همه قسمت‌ها", callback_data=f"dl_{drama_id}_all_sub"),
-            ],
-            [
-                InlineKeyboardButton("قسمت ۱", callback_data=f"ep_{drama_id}_1"),
-                InlineKeyboardButton("قسمت ۲", callback_data=f"ep_{drama_id}_2"),
-                InlineKeyboardButton("قسمت ۳", callback_data=f"ep_{drama_id}_3"),
-            ],
-            [
-                InlineKeyboardButton("قسمت ۴", callback_data=f"ep_{drama_id}_4"),
-                InlineKeyboardButton("قسمت ۵", callback_data=f"ep_{drama_id}_5"),
-                InlineKeyboardButton("قسمت ۶", callback_data=f"ep_{drama_id}_6"),
-            ],
-            [
-                InlineKeyboardButton("قسمت ۷", callback_data=f"ep_{drama_id}_7"),
-                InlineKeyboardButton("قسمت ۸", callback_data=f"ep_{drama_id}_8"),
-                InlineKeyboardButton("قسمت ۹", callback_data=f"ep_{drama_id}_9"),
-            ],
-            [
-                InlineKeyboardButton("قسمت ۱۰", callback_data=f"ep_{drama_id}_10"),
-                InlineKeyboardButton("قسمت ۱۱", callback_data=f"ep_{drama_id}_11"),
-                InlineKeyboardButton("قسمت ۱۲", callback_data=f"ep_{drama_id}_12"),
-            ],
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text("کدوم قسمت؟", reply_markup=reply_markup)
-    
+        await query.edit_message_text("⏳ در حال دریافت اطلاعات...")
+        
+        detail = get_drama_detail(drama_id)
+        if not detail:
+            await query.edit_message_text("❌ خطا در دریافت اطلاعات!")
+            return
+        
+        title = detail.get("title", "Unknown")
+        episodes = detail.get("episodes", [])
+        thumbnail = detail.get("thumbnail", "")
+        
+        # ارسال عکس سریال
+        if thumbnail:
+            try:
+                await query.message.reply_photo(
+                    photo=thumbnail,
+                    caption=f"🎬 *{title}*\n📺 {len(episodes)} قسمت",
+                    parse_mode="Markdown"
+                )
+            except:
+                pass
+        
+        if not episodes:
+            await query.edit_message_text(f"❌ قسمتی برای {title} پیدا نشد!")
+            return
+        
+        # ساخت دکمه‌ها فقط برای قسمت‌های موجود
+        keyboard = []
+        row = []
+        for ep in episodes:
+            ep_num = ep.get("number", "?")
+            ep_id = ep.get("id", "")
+            sub_available = ep.get("sub", 0)
+            icon = "✅" if sub_available else "⏳"
+            row.append(InlineKeyboardButton(f"{icon} {ep_num}", callback_data=f"ep_{drama_id}_{ep_id}_{ep_num}"))
+            if len(row) == 4:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+        
+        # دکمه دانلود همه
+        keyboard.append([InlineKeyboardButton("📥 زیرنویس همه قسمت‌ها", callback_data=f"dlall_{drama_id}")])
+        
+        await query.edit_message_text(
+            f"🎬 *{title}*\n✅ = زیرنویس دارد | ⏳ = هنوز نیامده\n\nقسمت مورد نظر رو انتخاب کن:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+
     elif data.startswith("ep_"):
         parts = data.split("_")
         drama_id = parts[1]
-        ep_num = parts[2]
+        ep_id = parts[2]
+        ep_num = parts[3]
         
         keyboard = [
             [
-                InlineKeyboardButton("زیرنویس", callback_data=f"dl_{drama_id}_{ep_num}_sub"),
-                InlineKeyboardButton("ویدیو", callback_data=f"dl_{drama_id}_{ep_num}_video"),
-                InlineKeyboardButton("هر دو", callback_data=f"dl_{drama_id}_{ep_num}_all"),
+                InlineKeyboardButton("📄 زیرنویس", callback_data=f"dl_{drama_id}_{ep_id}_{ep_num}_sub"),
+                InlineKeyboardButton("🎬 ویدیو", callback_data=f"dl_{drama_id}_{ep_id}_{ep_num}_video"),
+                InlineKeyboardButton("📦 هر دو", callback_data=f"dl_{drama_id}_{ep_id}_{ep_num}_all"),
             ]
         ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(f"قسمت {ep_num} — چی می‌خوای؟", reply_markup=reply_markup)
-    
+        await query.edit_message_text(
+            f"قسمت {ep_num} — چی می‌خوای؟",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif data.startswith("dlall_"):
+        drama_id = data.replace("dlall_", "")
+        await query.edit_message_text("⏳ در حال دانلود همه زیرنویس‌ها...")
+        link = f"https://kisskh.do/Drama/?id={drama_id}"
+        await run_download(query.message, link, "", "sub")
+
     elif data.startswith("dl_"):
         parts = data.split("_")
         drama_id = parts[1]
-        ep_num = parts[2]
-        mode = parts[3]
+        ep_id = parts[2]
+        ep_num = parts[3]
+        mode = parts[4]
         
         await query.edit_message_text(f"⏳ در حال دانلود قسمت {ep_num}...")
         
-        if ep_num == "all":
-            link = f"https://kisskh.do/Drama/?id={drama_id}"
-            episode_args = ""
-        else:
-            link = f"https://kisskh.do/Drama/?id={drama_id}"
-            episode_args = f"-f {ep_num} -l {ep_num}"
+        # بررسی زیرنویس
+        subs = get_sub_list(ep_id)
+        if not subs and mode in ["sub", "all"]:
+            await query.message.reply_text(
+                f"⏳ زیرنویس قسمت {ep_num} هنوز آماده نشده!\n"
+                f"معمولاً چند ساعت بعد از پخش میاد."
+            )
+            if mode == "sub":
+                return
         
-        await run_download(query, link, episode_args, mode)
+        link = f"https://kisskh.do/Drama/?id={drama_id}"
+        episode_args = f"-f {ep_num} -l {ep_num}"
+        await run_download(query.message, link, episode_args, mode)
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     
-    # پارس mode
     parts = text.rsplit(" ", 1)
     mode = "sub"
     if len(parts) == 2 and parts[1].lower() in ["sub", "video", "all"]:
@@ -164,9 +219,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         query_text = text
     
-    # اگه لینک مستقیم بود
     if query_text.startswith("https://kisskh") or query_text.startswith("http://kisskh"):
-        # بررسی شماره قسمت
         link_parts = query_text.rsplit(" ", 1)
         episode_args = ""
         link = query_text
@@ -181,15 +234,12 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     await update.message.reply_text(
-        "برای جستجو بنویس:\n`/search اسم سریال`\n\n"
-        "یا لینک مستقیم KissKH بفرست.",
+        "برای جستجو بنویس:\n`/search اسم سریال`",
         parse_mode="Markdown"
     )
 
 
 async def run_download(msg, query: str, episode_args: str, mode: str):
-    """اجرای kisskh downloader"""
-    
     for f in glob.glob(f"{DOWNLOAD_DIR}/**/*", recursive=True):
         if os.path.isfile(f):
             os.remove(f)
@@ -242,12 +292,10 @@ async def run_download(msg, query: str, episode_args: str, mode: str):
 
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
-    
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("search", search_command))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
     logger.info("Bot started!")
     app.run_polling()
 
