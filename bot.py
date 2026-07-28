@@ -3,6 +3,7 @@ import asyncio
 import logging
 import glob
 import requests
+from io import BytesIO
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
@@ -52,24 +53,20 @@ def get_drama_detail(drama_id):
     try:
         r = requests.get(url, headers=HEADERS, proxies=PROXIES, timeout=15)
         r.raise_for_status()
-        data = r.json()
-        logger.info(f"Drama keys: {list(data.keys())}")
-        return data
+        return r.json()
     except Exception as e:
         logger.error(f"Drama detail error: {e}")
         return None
 
 
-def get_sub_list(ep_id):
-    sub_key = os.environ.get("KISSKH_SUB_KEY", "")
-    url = f"https://kisskh.nl/api/Sub/{ep_id}?kkey={sub_key}"
+def download_image(url):
     try:
         r = requests.get(url, headers=HEADERS, proxies=PROXIES, timeout=15)
-        r.raise_for_status()
-        return r.json()
+        if r.status_code == 200:
+            return BytesIO(r.content)
     except Exception as e:
-        logger.error(f"Sub list error: {e}")
-        return []
+        logger.error(f"Image download error: {e}")
+    return None
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -122,34 +119,33 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         title = detail.get("title", "Unknown")
         episodes = detail.get("episodes", [])
+        thumbnail = detail.get("thumbnail", "")
 
-        # پیدا کردن عکس
-        thumbnail = ""
-        for key in ["thumbnail", "image", "poster", "cover", "coverImage", "coverUrl", "img"]:
-            thumbnail = detail.get(key, "")
-            if thumbnail:
-                break
-
+        # ارسال عکس — دانلود مستقیم
         if thumbnail:
-            try:
-                await query.message.reply_photo(
-                    photo=thumbnail,
-                    caption=f"🎬 *{title}*\n📺 {len(episodes)} قسمت",
-                    parse_mode="Markdown"
-                )
-            except Exception as e:
-                logger.error(f"Photo error: {e}")
+            img_data = download_image(thumbnail)
+            if img_data:
+                try:
+                    await query.message.reply_photo(
+                        photo=img_data,
+                        caption=f"🎬 *{title}*\n📺 {len(episodes)} قسمت",
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    logger.error(f"Photo send error: {e}")
 
         if not episodes:
             await query.edit_message_text(f"❌ قسمتی برای {title} پیدا نشد!")
             return
 
+        # ساخت دکمه‌ها
         keyboard = []
         row = []
         for ep in episodes:
             ep_num = to_int(ep.get("number", "?"))
             ep_id = ep.get("id", "")
-            sub_available = ep.get("sub", 0)
+            # استفاده از sub field داخل episodes
+            sub_available = ep.get("sub", 0) or ep.get("subCount", 0)
             icon = "✅" if sub_available else "⏳"
             row.append(InlineKeyboardButton(f"{icon}{ep_num}", callback_data=f"ep_{drama_id}_{ep_id}_{ep_num}"))
             if len(row) == 5:
@@ -196,16 +192,6 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         mode = parts[4]
 
         await query.edit_message_text(f"⏳ در حال دانلود قسمت {ep_num}...")
-
-        subs = get_sub_list(ep_id)
-        if not subs and mode in ["sub", "all"]:
-            await query.message.reply_text(
-                f"⏳ زیرنویس قسمت {ep_num} هنوز آماده نشده!\n"
-                f"معمولاً چند ساعت بعد از پخش میاد."
-            )
-            if mode == "sub":
-                return
-
         ep_int = to_int(ep_num)
         link = f"https://kisskh.do/Drama/?id={drama_id}"
         episode_args = f"-f {ep_int} -l {ep_int}"
