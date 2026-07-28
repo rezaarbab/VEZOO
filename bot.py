@@ -31,23 +31,40 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     
-    # اگه لینک مستقیم بود
-    if text.startswith("https://kisskh"):
-        await process_link(update, text, "sub")
-        return
-    
-    # پارس دستور: "Payback 9 sub"
+    # پارس mode
     parts = text.rsplit(" ", 1)
     mode = "sub"
-    
     if len(parts) == 2 and parts[1].lower() in ["sub", "video", "all"]:
-        query = parts[0]
+        query = parts[0].strip()
         mode = parts[1].lower()
     else:
         query = text
     
-    await update.message.reply_text(f"🔍 در حال جستجو برای: `{query}`...", parse_mode="Markdown")
-    await process_search(update, query, mode)
+    # اگه لینک مستقیم بود
+    if query.startswith("https://kisskh") or query.startswith("http://kisskh"):
+        await update.message.reply_text("⏳ در حال دانلود با لینک مستقیم...")
+        await run_download(update, query, "", mode)
+        return
+    
+    # اگه شماره قسمت داد
+    parts2 = query.rsplit(" ", 1)
+    episode_args = ""
+    if len(parts2) == 2 and parts2[1].isdigit():
+        drama_name = parts2[0]
+        ep_num = int(parts2[1])
+        episode_args = f"-f {ep_num} -l {ep_num}"
+        search_query = drama_name
+    else:
+        search_query = query
+    
+    await update.message.reply_text(
+        f"⚠️ جستجو با اسم ممکنه کار نکنه!\n\n"
+        f"بهتره لینک مستقیم بفرستی:\n"
+        f"`https://kisskh.do/Drama/Payback--UNCUT-/?id=12822`\n\n"
+        f"⏳ در حال تلاش با جستجو...",
+        parse_mode="Markdown"
+    )
+    await run_download(update, search_query, episode_args, mode)
 
 
 async def process_search(update: Update, query: str, mode: str):
