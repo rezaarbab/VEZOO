@@ -10,6 +10,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "YOUR_TOKEN_HERE")
+PROXY = os.environ.get("PROXY", "")  # مثال: socks5://user:pass@host:port
 DOWNLOAD_DIR = "/tmp/subtitles"
 
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -82,12 +83,14 @@ async def run_download(update: Update, query: str, episode_args: str, mode: str)
         os.remove(f)
     
     # ساخت دستور
+    proxy_env = f'ALL_PROXY={PROXY} ' if PROXY else ''
+    
     if mode == "sub":
-        cmd = f'kisskh dl "{query}" {episode_args} -so -s all -o {DOWNLOAD_DIR}'
+        cmd = f'{proxy_env}kisskh dl "{query}" {episode_args} -so -s all -o {DOWNLOAD_DIR}'
     elif mode == "video":
-        cmd = f'kisskh dl "{query}" {episode_args} -q 720p -o {DOWNLOAD_DIR}'
+        cmd = f'{proxy_env}kisskh dl "{query}" {episode_args} -q 720p -o {DOWNLOAD_DIR}'
     else:  # all
-        cmd = f'kisskh dl "{query}" {episode_args} -s all -q 720p -o {DOWNLOAD_DIR}'
+        cmd = f'{proxy_env}kisskh dl "{query}" {episode_args} -s all -q 720p -o {DOWNLOAD_DIR}'
     
     await update.message.reply_text(f"⚙️ در حال پردازش...\n`{cmd}`", parse_mode="Markdown")
     
