@@ -4,6 +4,7 @@ import logging
 import glob
 import requests
 from io import BytesIO
+from get_key import get_fresh_keys, ensure_keys
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
@@ -230,6 +231,15 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def run_download(msg, query, episode_args, mode):
+    # گرفتن کلید جدید اگه لازم باشه
+    sub_key = os.environ.get("KISSKH_SUB_KEY", "")
+    if not sub_key:
+        await msg.reply_text("🔑 در حال گرفتن کلید...")
+        stream_key, sub_key = await get_fresh_keys()
+        if not sub_key:
+            await msg.reply_text("❌ نتونستم کلید بگیرم! بعداً امتحان کن.")
+            return
+    
     for f in glob.glob(f"{DOWNLOAD_DIR}/**/*", recursive=True):
         if os.path.isfile(f):
             os.remove(f)
