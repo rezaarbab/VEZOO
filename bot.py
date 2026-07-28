@@ -100,7 +100,7 @@ async def run_download(update: Update, query: str, episode_args: str, mode: str)
         os.remove(f)
     
     # ساخت دستور
-    proxy_env = f'ALL_PROXY={PROXY} ' if PROXY else ''
+    proxy_env = f'HTTP_PROXY={PROXY} HTTPS_PROXY={PROXY} ALL_PROXY={PROXY} ' if PROXY else ''
     
     if mode == "sub":
         cmd = f'{proxy_env}kisskh dl "{query}" {episode_args} -so -s all -o {DOWNLOAD_DIR}'
