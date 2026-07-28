@@ -119,7 +119,8 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         title = detail.get("title", "Unknown")
         episodes = detail.get("episodes", [])
-        thumbnail = detail.get("thumbnail", "")
+        logger.info(f"Drama detail keys: {list(detail.keys())}")
+        thumbnail = detail.get("thumbnail", "") or detail.get("image", "") or detail.get("poster", "") or detail.get("cover", "") or detail.get("coverImage", "")
         
         # ارسال عکس سریال
         if thumbnail:
@@ -140,7 +141,12 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = []
         row = []
         for ep in episodes:
-            ep_num = ep.get("number", "?")
+            ep_num_raw = ep.get("number", "?")
+            try:
+                ep_num_f = float(str(ep_num_raw))
+                ep_num = int(ep_num_f) if ep_num_f == int(ep_num_f) else str(ep_num_raw)
+            except:
+                ep_num = str(ep_num_raw)
             ep_id = ep.get("id", "")
             sub_available = ep.get("sub", 0)
             icon = "✅" if sub_available else "⏳"
@@ -204,7 +210,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 return
         
         link = f"https://kisskh.do/Drama/?id={drama_id}"
-        episode_args = f"-f {ep_num} -l {ep_num}"
+        try:
+            ep_int = int(float(str(ep_num)))
+            episode_args = f"-f {ep_int} -l {ep_int}"
+        except:
+            episode_args = f"-f {ep_num} -l {ep_num}"
         await run_download(query.message, link, episode_args, mode)
 
 
@@ -227,6 +237,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(link_parts) == 2 and link_parts[1].isdigit():
             link = link_parts[0].strip()
             ep_num = link_parts[1]
+            try:
+            ep_int = int(float(str(ep_num)))
+            episode_args = f"-f {ep_int} -l {ep_int}"
+        except:
             episode_args = f"-f {ep_num} -l {ep_num}"
         
         await update.message.reply_text("⏳ در حال دانلود...")
